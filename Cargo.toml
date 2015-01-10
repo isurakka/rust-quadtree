@@ -5,3 +5,4 @@ version = "0.0.1"
 authors = ["Iiro Surakka <iiro.surakka@gmail.com>"]
 
 [dependencies.nalgebra]
+git = "https://github.com/sebcrozet/nalgebra.git"

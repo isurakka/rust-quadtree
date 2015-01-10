@@ -2,7 +2,8 @@ extern crate "nalgebra" as na;
 use na::{Vec2};
 use std::option::{Option};
 use std::cell::{RefCell};
-use std::rc::{Rc};
+use std::rc::{Rc, Weak};
+use std::num::{Int, UnsignedInt};
 
 struct AABB2<T> {
     lower_bound: Vec2<T>,
@@ -19,44 +20,100 @@ impl<T> AABB2<T> {
 }
 
 trait RegionQuadtreeEventHandler<T> {
-    fn on_added(quadtree: &RegionQuadtree<T>);
-    fn on_removing(quadtree: &RegionQuadtree<T>);
-    fn on_modified(quadtree: &RegionQuadtree<T>);
+    fn on_added(&self, quadtree: &RegionQuadtree<T>);
+    fn on_removing(&self, quadtree: &RegionQuadtree<T>);
+    fn on_changed(&self, quadtree: &RegionQuadtree<T>);
 }
 
-pub enum Node<T> 
+pub enum Node<'a, T> 
     where T: Clone 
 {
     // Has four quadrants
     Children(
-        Box<RegionQuadtree<T>>, // top left
-        Box<RegionQuadtree<T>>, // top right
-        Box<RegionQuadtree<T>>, // bottom right
-        Box<RegionQuadtree<T>>),// bottom left
+        Box<RegionQuadtree<'a, T>>, // top left
+        Box<RegionQuadtree<'a, T>>, // top right
+        Box<RegionQuadtree<'a, T>>, // bottom right
+        Box<RegionQuadtree<'a, T>>),// bottom left
     // Leaf with value
     Full(T),
     // Empty leaf
     Empty,
 }
 
-pub struct RegionQuadtree<T>
+pub struct RegionQuadtree<'a, T>
     where T: Clone {
     resolution: u32,
     depth: u32,
-    node: Node<T>,
-    parent: Option<Box<RegionQuadtree<T>>>,
+    node: Node<'a, T>,
     aabb: AABB2<u32>,
-    event_handler: Option<RegionQuadtreeEventHandler<T>>,
+    //parent: Option<Weak<&'a RegionQuadtree<'a, T>>>,
+    event_handler: Option<&'a (RegionQuadtreeEventHandler<T> + 'a)>,
 }
 
-impl<T> RegionQuadtree<T> {
-    pub fn new(resolution: u32) -> RegionQuadtree<T> {
+enum EventType {
+    Added,
+    Removing,
+    Changed,
+}
+
+impl<'a, T> RegionQuadtree<'a, T>
+    where T: Clone {
+    pub fn new(resolution: u32) -> RegionQuadtree<'a, T> {
+        let size = RegionQuadtree::<T>::calculate_size(resolution);
         RegionQuadtree {
             resolution: resolution,
             depth: 0,
             node: Node::Empty,
-            parent: None,
-            //aabb: 
+            aabb: AABB2::new(Vec2::new(0, 0), Vec2::new(size, size)),
+            event_handler: None,
+        }
+    }
+
+    fn new_child(resolution: u32, depth: u32, value: Option<T>, aabb: AABB2<u32>) 
+        -> RegionQuadtree<'a, T> 
+    {
+        let node = match value {
+            Some(v) => Node::Full(v),
+            None => Node::Empty,
+        };
+
+        RegionQuadtree {
+            resolution: resolution,
+            depth: depth,
+            node: node,
+            aabb: aabb,
+            event_handler: None,
+        }
+    }
+
+    fn calculate_size(resolution: u32) -> u32 {
+        (2 as u32).pow(resolution as usize)
+    }
+
+    fn propagate_event(&self, event_type: EventType, start: Option<&RegionQuadtree<'a, T>>, old_value: Option<T>)
+    {
+        let always = match start {
+            Some(v) => v,
+            None => self
+        };
+
+        let par_opt = match start {
+            Some(v) => Some(v),
+            None => Some(self)
+        };
+
+        while !par_opt.is_none() {
+            let par = &par_opt.unwrap();
+            if par.event_handler.is_none() {
+                continue;
+            }
+            let event_handler = par.event_handler.unwrap();
+
+            match event_type {
+                EventType::Added    => event_handler.on_added(always),
+                EventType::Removing => event_handler.on_removing(always),
+                EventType::Changed  => event_handler.on_changed(always),
+            }
         }
     }
 }
