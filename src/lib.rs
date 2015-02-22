@@ -25,8 +25,8 @@ trait RegionQuadtreeEventHandler<T> {
     fn on_changed(&self, quadtree: &RegionQuadtree<T>);
 }
 
-pub enum Node<'a, T> 
-    where T: Clone 
+pub enum Node<'a, T: 'a> 
+    where T: Copy + PartialEq
 {
     // Has four quadrants
     Children(
@@ -40,13 +40,13 @@ pub enum Node<'a, T>
     Empty,
 }
 
-pub struct RegionQuadtree<'a, T>
-    where T: Clone {
+pub struct RegionQuadtree<'a, T: 'a>
+    where T: Copy + PartialEq {
     resolution: u32,
     depth: u32,
     node: Node<'a, T>,
     aabb: AABB2<u32>,
-    //parent: Option<Weak<&'a RegionQuadtree<'a, T>>>,
+    parent: Option<&'a RegionQuadtree<'a, T>>,
     event_handler: Option<&'a (RegionQuadtreeEventHandler<T> + 'a)>,
 }
 
@@ -56,8 +56,14 @@ enum EventType {
     Changed,
 }
 
+enum NodeType {
+    Black,
+    White,
+    Grey
+}
+
 impl<'a, T> RegionQuadtree<'a, T>
-    where T: Clone {
+    where T: Copy + PartialEq {
     pub fn new(resolution: u32) -> RegionQuadtree<'a, T> {
         let size = RegionQuadtree::<T>::calculate_size(resolution);
         RegionQuadtree {
@@ -65,11 +71,12 @@ impl<'a, T> RegionQuadtree<'a, T>
             depth: 0,
             node: Node::Empty,
             aabb: AABB2::new(Vec2::new(0, 0), Vec2::new(size, size)),
+            parent: None,
             event_handler: None,
         }
     }
 
-    fn new_child(resolution: u32, depth: u32, value: Option<T>, aabb: AABB2<u32>) 
+    fn new_child(resolution: u32, depth: u32, value: Option<T>, parent: &'a RegionQuadtree<'a, T>, aabb: AABB2<u32>) 
         -> RegionQuadtree<'a, T> 
     {
         let node = match value {
@@ -82,12 +89,21 @@ impl<'a, T> RegionQuadtree<'a, T>
             depth: depth,
             node: node,
             aabb: aabb,
+            parent: Some(parent),
             event_handler: None,
         }
     }
 
     fn calculate_size(resolution: u32) -> u32 {
         (2 as u32).pow(resolution as usize)
+    }
+
+    fn get_type(&self) -> (NodeType, Option<T>) {
+        match self.node {
+            Node::Children(_, _, _, _) => (NodeType::Grey, None),
+            Node::Full(value) => (NodeType::Black, value),
+            Node::Empty => (NodeType::White, None),
+        }
     }
 
     fn propagate_event(&self, event_type: EventType, start: Option<&RegionQuadtree<'a, T>>, old_value: Option<T>)
@@ -114,7 +130,44 @@ impl<'a, T> RegionQuadtree<'a, T>
                 EventType::Removing => event_handler.on_removing(always),
                 EventType::Changed  => event_handler.on_changed(always),
             }
+
+            let par_opt = par.parent;
         }
+    }
+
+    pub fn set(&mut self, value: T) -> bool {
+        let anySet = self.set_internal(value);
+        if (anySet)
+        {
+            //unsubdivide()
+        }
+        anySet
+    }
+
+    fn set_internal(&mut self, value: Option<T>) -> bool {
+        let black = match self.node {
+            Node::Full(myValue) => Some(myValue),
+            _ => None
+        };
+
+        if (!black.is_none()) {
+            let old_value = black.unwrap();
+            if (old_value == value) {
+                return false;
+            } else {
+                self.node = Node::Full(value);
+                self.propagate_event(EventType::Changed, None, Some(old_value));
+                return true;
+            }
+        }
+
+        //unset();
+
+        self.node = Node::Full(value);
+
+        self.propagate_event(EventType::Added, None, None);
+
+        true
     }
 }
 
