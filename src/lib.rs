@@ -41,11 +41,7 @@ pub enum Node<'a, T: 'a>
     where T: Copy + PartialEq
 {
     // Has four quadrants
-    Children(
-        Box<RegionQuadtree<'a, T>>, // top left
-        Box<RegionQuadtree<'a, T>>, // top right
-        Box<RegionQuadtree<'a, T>>, // bottom right
-        Box<RegionQuadtree<'a, T>>),// bottom left
+    Children([Box<RegionQuadtree<'a, T>>; 4]),
     // Leaf with value
     Full(T),
     // Empty leaf
@@ -120,7 +116,7 @@ impl<'a, T> RegionQuadtree<'a, T>
 
     fn get_type(&self) -> (NodeType, Option<T>) {
         match self.node {
-            Node::Children(_, _, _, _) => (NodeType::Grey, None),
+            Node::Children(_) => (NodeType::Grey, None),
             Node::Full(value) => (NodeType::Black, Some(value)),
             Node::Empty => (NodeType::White, None),
         }
@@ -173,15 +169,16 @@ impl<'a, T> RegionQuadtree<'a, T>
     }
 
     fn set_internal(&mut self, opt_value: Option<T>) -> bool {
+        let black = match self.node {
+            Node::Full(v) => Some(v),
+            _ => None
+        };
+
         match opt_value.is_some() {
             true => {
                 let value = opt_value.unwrap();
-                let black = match self.node {
-                    Node::Full(v) => Some(v),
-                    _ => None
-                };
 
-                if (!black.is_none()) {
+                if (black.is_some()) {
                     let old_value = black.unwrap();
                     if (old_value == value) {
                         return false;
@@ -193,15 +190,33 @@ impl<'a, T> RegionQuadtree<'a, T>
                 }
 
                 //unset();
-
                 self.node = Node::Full(value);
-
                 self.propagate_event(EventType::Added, None, None);
 
                 return true
             },
             false => { 
+                if (black.is_some()) {
+                    self.propagate_event(EventType::Removing, None, None);
+                    self.node = Node::Empty;
+                    return true;
+                }
 
+                match self.node {
+                    Node::Empty => return false,
+                    _ => (),
+                };
+
+                match self.node {
+                    Node::Children(ref mut children) => {
+                        let mut any = false;
+                        for c in children.iter_mut() {
+                            any |= c.set_internal(opt_value);
+                        }
+                        return any;
+                    },
+                    _ => ()
+                };
             },
         };
         
