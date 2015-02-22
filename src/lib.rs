@@ -220,7 +220,39 @@ impl<'a, T> RegionQuadtree<'a, T>
             },
         };
         
-        false
+        panic!("No matches while setting a value");
+    }
+
+    fn subdivide(&'a mut self) -> bool {
+        let value = match self.node {
+            Node::Full(v) => Some(v),
+            _ => None
+        };
+
+        if (value.is_some()) {
+            self.propagate_event(EventType::Removing, None, None);
+        }
+
+        self.node = Node::Children([
+            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                AABB2::new(
+                    self.aabb.lower_bound, 
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
+            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                AABB2::new(
+                    self.aabb.lower_bound, 
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
+            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                AABB2::new(
+                    self.aabb.lower_bound, 
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
+            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                AABB2::new(
+                    self.aabb.lower_bound, 
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
+            ]);
+
+        true
     }
 }
 
