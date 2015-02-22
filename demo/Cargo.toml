@@ -1,0 +1,8 @@
+[package]
+
+name = "demo"
+version = "0.0.1"
+authors = ["Iiro Surakka <iiro.surakka@gmail.com>"]
+
+[dependencies.rust-quadtree]
+path = ".."
