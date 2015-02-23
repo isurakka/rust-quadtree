@@ -41,7 +41,7 @@ pub enum Node<'a, T: 'a>
     where T: Copy + PartialEq
 {
     // Has four quadrants
-    Children([Box<RegionQuadtree<'a, T>>; 4]),
+    Children(RefCell<[Option<Weak<RegionQuadtree<'a, T>>>; 4]>),
     // Leaf with value
     Full(T),
     // Empty leaf
@@ -54,7 +54,7 @@ pub struct RegionQuadtree<'a, T: 'a>
     depth: u32,
     node: Node<'a, T>,
     aabb: AABB2<u32>,
-    parent: Option<&'a RegionQuadtree<'a, T>>,
+    parent: Option<Rc<&'a RegionQuadtree<'a, T>>>,
     event_handler: Option<&'a (RegionQuadtreeEventHandler<T> + 'a)>,
 }
 
@@ -88,7 +88,8 @@ impl<'a, T> RegionQuadtree<'a, T>
         })
     }
 
-    fn new_child(resolution: u32, depth: u32, value: Option<T>, parent: &'a RegionQuadtree<'a, T>, aabb: AABB2<u32>) 
+    fn new_child(resolution: u32, depth: u32, value: Option<T>, 
+        parent: Rc<&'a RegionQuadtree<'a, T>>, aabb: AABB2<u32>) 
         -> RegionQuadtree<'a, T> 
     {
         let node = match value {
@@ -155,7 +156,7 @@ impl<'a, T> RegionQuadtree<'a, T>
                 EventType::Changed  => event_handler.on_changed(always),
             }
 
-            let par_opt = par.parent;
+            let par_opt = &par.parent;
         }
     }
 
@@ -210,8 +211,8 @@ impl<'a, T> RegionQuadtree<'a, T>
                 match self.node {
                     Node::Children(ref mut children) => {
                         let mut any = false;
-                        for c in children.iter_mut() {
-                            any |= c.set_internal(opt_value);
+                        for c in children.borrow_mut().iter_mut() {
+                            any |= std::rc::get_mut(&mut c.unwrap().upgrade().unwrap()).unwrap().set_internal(opt_value);
                         }
                         return any;
                     },
@@ -233,24 +234,32 @@ impl<'a, T> RegionQuadtree<'a, T>
             self.propagate_event(EventType::Removing, None, None);
         }
 
-        self.node = Node::Children([
-            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+        self.node = Node::Children(RefCell::new([None, None, None, None]));
+
+        let self_rc = Rc::new(&*self);
+
+        self.node = Node::Children(RefCell::new([
+            Some(Rc::new(RegionQuadtree::<T>::new_child(self.resolution, 
+                self.depth + 1, value, self_rc.clone(),
                 AABB2::new(
                     self.aabb.lower_bound, 
-                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
-            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))).downgrade()),
+            Some(Rc::new(RegionQuadtree::<T>::new_child(self.resolution, 
+                self.depth + 1, value, self_rc.clone(),
                 AABB2::new(
                     self.aabb.lower_bound, 
-                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
-            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))).downgrade()),
+            Some(Rc::new(RegionQuadtree::<T>::new_child(self.resolution, 
+                self.depth + 1, value, self_rc.clone(),
                 AABB2::new(
                     self.aabb.lower_bound, 
-                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
-            Box::new(RegionQuadtree::<T>::new_child(self.resolution, self.depth + 1, value, self,
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))).downgrade()),
+            Some(Rc::new(RegionQuadtree::<T>::new_child(self.resolution, 
+                self.depth + 1, value, self_rc.clone(),
                 AABB2::new(
                     self.aabb.lower_bound, 
-                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))),
-            ]);
+                    self.aabb.lower_bound + Vec2::new(self.aabb.get_width() / 2, self.aabb.get_height() / 2)))).downgrade()),
+            ]));
 
         true
     }
