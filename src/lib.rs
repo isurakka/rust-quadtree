@@ -87,6 +87,19 @@ impl<'a, T> RegionQuadtree<'a, T>
     }
 
     fn get_aabb(&self, index: usize) -> AABB2<u32> {
+        let mut aabb_topleft = Vec2<u32>::new(0, 0);
+        let mut decr_index = index;
+        let full_aabb = self.get_aabb(0);
+        let index_res = (index / 4.0).floor();
+        let size = Vec2::new(
+            full_aabb.get_width() / index_res, 
+            full_aabb.get_height() / index_res);
+        for r in index_res..0 {
+            let pos = (decr_index - 1) % 4;
+            aabb_topleft += Vec2::new(
+                full_aabb.get_width() / r, 
+                full_aabb.get_height() / r);
+        }
         self.aabb
     }
 
@@ -97,8 +110,8 @@ impl<'a, T> RegionQuadtree<'a, T>
     }
 
     pub fn set(&mut self, value: Option<T>) -> bool {
-        
-        
+
+
         false
     }
 
